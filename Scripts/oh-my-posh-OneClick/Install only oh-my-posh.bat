@@ -2,6 +2,8 @@
 setlocal enabledelayedexpansion
 
 :: Sets
+set "oh_theme=night-owl"
+
 set "scriptPath=%~dp0"
 
 :: Admin
@@ -13,7 +15,7 @@ if %errorlevel% neq 0 (
 )
 
 powershell -Command "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser"
-powershell -file "%scriptPath%menu.ps1" -oneclick
+powershell -file "%scriptPath%main.ps1" -ps_profile -oh_theme %oh_theme%
 
 pause
 exit /b

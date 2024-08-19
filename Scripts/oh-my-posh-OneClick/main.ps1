@@ -20,6 +20,8 @@ if (-not (Test-Path $savePath)) {
 	New-Item -Path $savePath -ItemType Directory -Force | Out-Null
 }
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 function Shout {
 	param(
 		[parameter(Mandatory = $true)]
@@ -138,7 +140,7 @@ function Install-Nano {
 	$destinationFolder = $shellApp.NameSpace($destinationPath)
 	
 	foreach ($item in $zipFile.Items()) {
-		$destinationFolder.CopyHere($item)
+		$destinationFolder.CopyHere($item, 0x0004 + 0x0010 + 0x0400)
 	}
 	
 	$currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
@@ -223,8 +225,10 @@ function Write-Profile {
     }
 
 	$scriptContent = @"
+`$oh_my_theme="$oh_theme"
+
 Import-Module Terminal-Icons
-oh-my-posh init $ps_com --config "$env:LOCALAPPDATA\Programs\oh-my-posh\themes\$oh_theme.omp.json" | Invoke-Expression
+oh-my-posh init $ps_com --config "$env:LOCALAPPDATA\Programs\oh-my-posh\themes\`$oh_my_theme.omp.json" | Invoke-Expression
 # Shows navigable menu of all options when hitting Tab
 Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete
 
@@ -248,7 +252,7 @@ Shout 'Installing psreadline powershell module'; Install-Module -Name psreadline
 Shout 'Installing Terminal-Icons module'; Install-Module -Name Terminal-Icons -Confirm:$False | Out-Null
 Shout 'Installing oh-my-posh'; Install-oh
 
-if ($nano) {Shout 'Installing nano for console'; Install-Nano}
+if ($nano) { Shout 'Installing nano for console'; Install-Nano }
 if ($cmd) { Shout 'Installing clink for cmd'; Install-Clink }
 if ($ps7) { Shout 'Installing latest powershell 7'; Install-Pwsh }
 if ($ps_profile) { Shout "Creating profiles for PS5/7"; Write-Profile -ps_ver '7' -oh_theme $oh_theme; Write-Profile -ps_ver '5' -oh_theme $oh_theme }

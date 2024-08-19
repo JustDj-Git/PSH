@@ -1,8 +1,3 @@
-param (
-	[PARAMETER(Mandatory = $false)]
-	[switch]$oneclick
-)
-
 $response = Test-Connection -ComputerName "8.8.8.8" -Count 1 -Quiet
 
 if ($response) {
@@ -13,16 +8,17 @@ if ($response) {
     exit
 }
 
+# Initial settings
 $scriptPath = Split-Path -Path $MyInvocation.MyCommand.Definition
 
-# Initial settings
 $oh_theme = 'night-owl'
+
 $features = @{
-    cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for CMD (oh-my-cmd)'; argument = '-cmd' }
-    ps7        = [PSCustomObject]@{ status = '++'; description = 'Install latest powershell 7'; argument = '-ps7' }
-    terminal   = [PSCustomObject]@{ status = '++'; description = 'Install WindowsTerminal'; argument = '-terminal' }
-    ps_profile = [PSCustomObject]@{ status = '++'; description = 'Write powershell 5 and 7 profiles (you must do it later by yourself)'; argument = '-ps_profile' }
-    nano       = [PSCustomObject]@{ status = '++'; description = 'Install nano editor for Windows'; argument = '-nano' }
+	cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for CMD (oh-my-cmd)'; argument = '-cmd' }
+	ps7        = [PSCustomObject]@{ status = '++'; description = 'Install latest powershell 7'; argument = '-ps7' }
+	terminal   = [PSCustomObject]@{ status = '++'; description = 'Install WindowsTerminal'; argument = '-terminal' }
+	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Write powershell 5 and 7 profiles (or you must do it later by yourself)'; argument = '-ps_profile' }
+	nano       = [PSCustomObject]@{ status = '++'; description = 'Install nano editor for Windows'; argument = '-nano' }
 }
 
 # Colorized
@@ -47,8 +43,6 @@ function MainRun {
     Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath\main.ps1`" $($args_r -join ' ')" -NoNewWindow -Wait
     exit
 }
-
-if ($oneclick){ MainRun }
 
 # Main menu loop
 do {
