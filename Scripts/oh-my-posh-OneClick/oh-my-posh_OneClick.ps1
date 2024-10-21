@@ -1,18 +1,7 @@
-Param (
-    [ValidateSet('AIO', 'OhMyPoshOnly')]
-    $mode,
-    $oh_theme = 'night-owl'
-)
-
-function Pass-Parameters {
-    Param ([hashtable]$NamedParameters)
-    return ($NamedParameters.GetEnumerator()|%{"-$($_.Key) `"$($_.Value)`""}) -join " "
-}
-
 # Self-elevate the script
 if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
     if ([int](Get-CimInstance -Class Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber) -ge 6000) {
-        $CommandLine = "-ExecutionPolicy Bypass -File `"" + $MyInvocation.MyCommand.Path + "`" " + (Pass-Parameters $MyInvocation.BoundParameters) + " " + $MyInvocation.UnboundArguments
+        $CommandLine = "-ExecutionPolicy Bypass -File `"" + $MyInvocation.MyCommand.Path + "`" "
         Start-Process -FilePath PowerShell.exe -Verb Runas -ArgumentList $CommandLine
         exit
     }
@@ -74,6 +63,11 @@ function Main {
 		)
 		
 		$latestReleaseUrl = "https://api.github.com/repos/$username/$repo/releases/latest"
+		if ($latestRelease -eq $null) {
+			Shout "Error fetching release information. Check your network connection or repository." -color "Red"
+			return
+		}
+		
 		$latestRelease = Invoke-WebRequest -Uri $latestReleaseUrl | ConvertFrom-Json
 
 		$link = $latestRelease.assets.browser_download_url | Select-String -Pattern "$zip_name" | select-object -First 1
@@ -82,6 +76,11 @@ function Main {
 	}
 
 	function Install-oh {
+		if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+			Shout 'oh-my-posh is already installed. Skipping...'
+			return
+		}
+
 		try {
 			Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://ohmyposh.dev/install.ps1')) 6>$null
 		} catch {
@@ -136,7 +135,7 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 
 	function Install-Nano {
 		if (Get-Command nano -ErrorAction SilentlyContinue) {
-			Shout 'Nano already installed. Skipping...'
+			Shout 'Nano is already installed. Skipping...'
 			return
 		}
 
@@ -171,7 +170,7 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 
 	function Install-WindowsTerminal {
 		if (Get-AppxPackage -Name Microsoft.WindowsTerminal) {
-			Write-Host "Windows Terminal is installed. Skipping..."
+			Shout "Windows Terminal is installed. Skipping..."
 		} else {
 			$releaseZipUrl = GitHubParce -username "microsoft" -repo "terminal" -zip_name ".msixbundle"
 			$fileName = $releaseZipUrl.Split('/')[-1]
@@ -186,7 +185,7 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 				Add-AppxPackage -Path "$savePath\$fileName" | Out-Null
 			} catch {
 				Shout "$($_.Exception.Message)" -color 'Red'
-				Shout "WindowsTerminal not installed. Skipping..." -color 'Red'
+				Shout "WindowsTerminal is not installed. Skipping..." -color 'Red'
 			}
 		}
 	}
@@ -214,7 +213,7 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 				}
 			}
 		} else {
-			Shout "WindowsTerminal not installed. Skiping" -color 'Red'
+			Shout "WindowsTerminal is not installed. Skipping" -color 'Red'
 		}
 	}
 
@@ -269,7 +268,8 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	}
 
 	# =======================  Main Script Body =======================
-	Shout "Script starting" -color 'Green'
+	cls
+	Shout "Script is starting" -color 'Green'
 
 	Shout 'Installing NuGet packageProvider'; Install-PackageProvider -Name NuGet -Confirm:$False -Force | Out-Null
 	Shout 'Configuring PSGallery repository'; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted | Out-Null
@@ -281,8 +281,8 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	if ($cmd) { Shout 'Installing clink for cmd'; Install-Clink }
 	if ($ps7) { Shout 'Installing latest powershell 7'; Install-Pwsh }
 	if ($ps_profile) { Shout "Creating profiles for PS5/7"; Write-Profile -ps_ver '7' -oh_theme $oh_theme; Write-Profile -ps_ver '5' -oh_theme $oh_theme }
-	if ($terminal) { Shout 'Installing WindowsTerminal'; Install-WindowsTerminal; Configure-WindowsTerminal }
-
+	if ($terminal) { Shout 'Installing WindowsTerminal'; Install-WindowsTerminal }
+	Shout 'Configuring WindowsTerminal'; Configure-WindowsTerminal | out-null
 	Shout 'Installing oh-my-posh fonts'; oh-my-posh font install FiraCode | out-null
 
 	Remove-Item "$savePath" -Force -Recurse
@@ -300,7 +300,7 @@ $response = Test-Connection -ComputerName "8.8.8.8" -Count 1 -Quiet
 if ($response) {
     Write-Host "Internet detected. Continue..." -ForegroundColor Green
 } else {
-    Write-Host "No internet detected! Restart script when internet will be available" -ForegroundColor Red
+    Write-Host "No internet detected! Restart the script when internet will be available" -ForegroundColor Red
     Read-Host -Prompt "Press Enter to exit"
     exit
 }
@@ -308,19 +308,11 @@ if ($response) {
 # Initial settings
 $scriptPath = Split-Path -Path $MyInvocation.MyCommand.Definition
 
-if ($mode -eq 'OhMyPoshOnly') {
-    Main -ps_profile -oh_theme $oh_theme
-}
-
-if ($mode -eq 'AIO') {
-    Main -nano -cmd -ps7 -ps_profile -terminal -oh_theme $oh_theme
-}
-
 $oh_theme = 'night-owl'
 
 $features = @{
 	cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for CMD (oh-my-cmd)'; argument = '-cmd' }
-	ps7        = [PSCustomObject]@{ status = '++'; description = 'Install latest powershell 7'; argument = '-ps7' }
+	ps7        = [PSCustomObject]@{ status = '++'; description = 'Install the latest powershell 7'; argument = '-ps7' }
 	terminal   = [PSCustomObject]@{ status = '++'; description = 'Install WindowsTerminal'; argument = '-terminal' }
 	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Write powershell 5 and 7 profiles (or you must do it later by yourself)'; argument = '-ps_profile' }
 	nano       = [PSCustomObject]@{ status = '++'; description = 'Install nano editor for Windows'; argument = '-nano' }
@@ -365,12 +357,12 @@ do {
     Write-Host "R. Run installation Script" -ForegroundColor Blue
     Write-Host "Q. Do nothing and exit" -ForegroundColor Red
     Write-Host '----'
-    Write-Host 'Default choose - all functions enabled'
+    Write-Host 'By default, all functions are enabled unless manually disabled.'
     Write-Host 'Choose option with numbers plus enter to disable/enable function'
     Write-Host 'Run script install with R option or Q for quit'
     Write-Host ''
     Write-Host ''
-    $option = Read-Host "Enable or disable option (1-$($features.Count))"
+    $option = Read-Host "Choose a theme with 1 or enable/disable option (2-$($features.Count))"
 
     switch ($option) {
         '1' {
