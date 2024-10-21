@@ -1,13 +1,9 @@
-# Self-elevate the script
 if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-    if ([int](Get-CimInstance -Class Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber) -ge 6000) {
-        $CommandLine = "-ExecutionPolicy Bypass -File `"" + $MyInvocation.MyCommand.Path + "`" "
-        Start-Process -FilePath PowerShell.exe -Verb Runas -ArgumentList $CommandLine
-        exit
-    }
+    $CommandLine = "-ExecutionPolicy Bypass -File `"" + $MyInvocation.MyCommand.Path + "`" "
+    Start-Process -FilePath powershell.exe -Verb Runas -ArgumentList $CommandLine
 }
 
-mode con: cols=90 lines=30
+mode con: cols=105 lines=30
 
 function Main {
 	param (
@@ -350,7 +346,7 @@ do {
     Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
     Write-Host ")"
     Write-Host "`n"
-    $count = 0
+    $count = 1
     $features.GetEnumerator() | ForEach-Object {
         Write-StatusLine -status $_.Value.status -lineText " $count. $($_.Value.status) $($_.Value.description)"
 		$count++
@@ -400,11 +396,11 @@ do {
 				Write-Host $line
 			}
 			
-			Write-Host '----'
+			Write-Host "`n`n------------"
 			Write-Host " B. Go back and set theme to $oh_theme"
-			Write-Host '----'
+			Write-Host "------------`n`n"
 			
-			$choice = Read-Host " Select theme by number" -ForegroundColor Green
+			$choice = Read-Host " Select theme by number"
             
             if ($choice -eq 'B' -or $choice -eq 'b') {
                 continue
