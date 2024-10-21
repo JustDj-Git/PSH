@@ -7,6 +7,8 @@ if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     }
 }
 
+mode con: cols=90 lines=30
+
 function Main {
 	param (
 	[PARAMETER(Mandatory = $true)]
@@ -314,7 +316,7 @@ $features = @{
 	cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for CMD (oh-my-cmd)'; argument = '-cmd' }
 	ps7        = [PSCustomObject]@{ status = '++'; description = 'Install the latest powershell 7'; argument = '-ps7' }
 	terminal   = [PSCustomObject]@{ status = '++'; description = 'Install WindowsTerminal'; argument = '-terminal' }
-	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Write powershell 5 and 7 profiles (or you must do it later by yourself)'; argument = '-ps_profile' }
+	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Create powershell profiles (or do it manually later)'; argument = '-ps_profile' }
 	nano       = [PSCustomObject]@{ status = '++'; description = 'Install nano editor for Windows'; argument = '-nano' }
 }
 
@@ -341,34 +343,33 @@ function MainRun {
 # Main menu loop
 do {
     cls
-    Write-Host '----'
-    Write-Host "Configs" -ForegroundColor Yellow
-    Write-Host '----'
-    Write-Host "1. Set oh_theme (current: " -NoNewline
+    Write-Host '------------------------------------------------'
+    Write-Host "    Oh-my-posh OneClick installer" -ForegroundColor Yellow
+    Write-Host "------------------------------------------------`n`n"
+    Write-Host " T or 0 - Set oh_theme (current: " -NoNewline
     Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
     Write-Host ")"
-    $count = 2
+    Write-Host "`n"
+    $count = 0
     $features.GetEnumerator() | ForEach-Object {
-        Write-StatusLine -status $_.Value.status -lineText "$count. $($_.Value.status) $($_.Value.description)"
-        $count++
+        Write-StatusLine -status $_.Value.status -lineText " $count. $($_.Value.status) $($_.Value.description)"
+		$count++
     }
-    
-    Write-Host '----'
-    Write-Host "R. Run installation Script" -ForegroundColor Blue
-    Write-Host "Q. Do nothing and exit" -ForegroundColor Red
-    Write-Host '----'
-    Write-Host 'By default, all functions are enabled unless manually disabled.'
-    Write-Host 'Choose option with numbers plus enter to disable/enable function'
-    Write-Host 'Run script install with R option or Q for quit'
-    Write-Host ''
-    Write-Host ''
-    $option = Read-Host "Choose a theme with 1 or enable/disable option (2-$($features.Count))"
+    Write-Host "`n`n--------------------------------------"
+    Write-Host " R. Run installation Script" -ForegroundColor Blue
+    Write-Host " Q. Do nothing and exit" -ForegroundColor Red
+    Write-Host "--------------------------------------`n`n"
+    Write-Host ' Notes:'
+    Write-Host '  By default, all functions are enabled unless manually disabled.'
+    Write-Host "  Choose option with numbers plus enter to disable/enable function `n`n"
+
+    $option = Read-Host " Enter your choice"
 
     switch ($option) {
-        '1' {
+        {($_ -eq 'T') -or ($_ -eq 0)} {
 			cls
 			Write-Host '----'
-			Write-Host "Set oh_theme (current: " -NoNewline
+			Write-Host " Set oh_theme (current: " -NoNewline
 			Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
 			Write-Host ")"
 			Write-Host '----'
@@ -400,10 +401,10 @@ do {
 			}
 			
 			Write-Host '----'
-			Write-Host "B. Go back and set theme to $oh_theme"
+			Write-Host " B. Go back and set theme to $oh_theme"
 			Write-Host '----'
 			
-			$choice = Read-Host "Select theme by number"			
+			$choice = Read-Host " Select theme by number" -ForegroundColor Green
             
             if ($choice -eq 'B' -or $choice -eq 'b') {
                 continue
@@ -412,12 +413,12 @@ do {
             if ($themes[$choice - 1] -and ($choice -gt 0)) {
                 $oh_theme = $themes[$choice - 1]
             } else {
-                Write-Host "Invalid selection. Try again." -ForegroundColor Red
+                Write-Host " Invalid selection. Try again." -ForegroundColor Red
                 Start-Sleep -Seconds 2
             }
         }
-        { $_ -in (2..5) } {
-            $feature = $features.Keys | Select-Object -Index ($option - 2)
+        { $_ -in (1..5) } {
+            $feature = $features.Keys | Select-Object -Index ($option - 1)
             if ($features[$feature].status -eq '++') {
                 $features[$feature].status = '--'
             } else {
@@ -431,7 +432,7 @@ do {
             exit
         }
         default {
-            Write-Host "Invalid option. Please try again."
+            Write-Host " Invalid option. Please try again." -ForegroundColor Red
             Start-Sleep -Seconds 2
         }
     }
