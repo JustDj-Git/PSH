@@ -5,6 +5,11 @@
 
 $host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(105, 30)
 #$host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(105, 30)
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$oh_theme = 'night-owl'
+$logging = $false
+
+######### Helpers
 
 function Invoke-Admin {
     param (
@@ -38,7 +43,67 @@ function Extract-Zip {
     }
 }
 
-function Main {
+function Download {
+	param (
+        [string]$releaseZipUrl,
+        [string]$savePath,
+		[string]$fileName
+    )
+	try {
+		(New-Object Net.WebClient).DownloadFile("$releaseZipUrl", "$savePath\$fileName")
+	} catch {
+		Shout "$fileName is not downloaded. Skipping..."
+	}
+}
+
+function Shout {
+	param(
+		[parameter(Mandatory = $true)]
+		$text,
+		$color
+	)
+
+	$date = (Get-Date -Format "MM/dd/yyyy HH:mm:ss").ToString()
+	$finaltext = $date + ' ' + $text
+	if ($logging) {
+		Write-Host $finaltext >> "$PSScriptRoot/oh-my-posh_OneClick.log"
+	}
+	if ($color){
+		Write-Host $finaltext -ForegroundColor $color
+	} else {
+		Write-Host $finaltext
+	}
+}
+
+function GitHubParce {
+	param(
+		[PARAMETER(Mandatory = $true)]
+		[ValidateNotNullOrEmpty()]
+		$username,
+		[PARAMETER(Mandatory = $true)]
+		[ValidateNotNullOrEmpty()]
+		$repo,
+		[PARAMETER(Mandatory = $true)]
+		[ValidateNotNullOrEmpty()]
+		$zip_name
+
+	)
+	
+	$latestReleaseUrl = "https://api.github.com/repos/$username/$repo/releases/latest"
+	try {
+		$latestRelease = Invoke-WebRequest -Uri $latestReleaseUrl | ConvertFrom-Json
+		$link = $latestRelease.assets.browser_download_url | Select-String -Pattern "$zip_name" | select-object -First 1
+		$link = $link.ToString().Trim()
+		return $link
+	} catch {
+		Shout "Error fetching release information. Check your network connection or repository." -color "Red"
+		return
+	}
+}
+
+#########
+
+function MainRun {
 	param (
 	[PARAMETER(Mandatory = $true)]
 	[ValidateNotNullOrEmpty()]
@@ -61,50 +126,6 @@ function Main {
 
 	if (-not (Test-Path $savePath)) {
 		New-Item -Path $savePath -ItemType Directory -Force | Out-Null
-	}
-
-	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-	function Shout {
-		param(
-			[parameter(Mandatory = $true)]
-			$text,
-			$color
-		)
-
-		$date = (Get-Date -Format "MM/dd/yyyy HH:mm:ss").ToString()
-		$finaltext = $date + ' ' + $text
-		if ($color){
-			Write-Host $finaltext -ForegroundColor $color
-		} else {
-			Write-Host $finaltext
-		}
-	}
-
-	function GitHubParce {
-		param(
-			[PARAMETER(Mandatory = $true)]
-			[ValidateNotNullOrEmpty()]
-			$username,
-			[PARAMETER(Mandatory = $true)]
-			[ValidateNotNullOrEmpty()]
-			$repo,
-			[PARAMETER(Mandatory = $true)]
-			[ValidateNotNullOrEmpty()]
-			$zip_name
-
-		)
-		
-		$latestReleaseUrl = "https://api.github.com/repos/$username/$repo/releases/latest"
-		try {
-			$latestRelease = Invoke-WebRequest -Uri $latestReleaseUrl | ConvertFrom-Json
-			$link = $latestRelease.assets.browser_download_url | Select-String -Pattern "$zip_name" | select-object -First 1
-			$link = $link.ToString().Trim()
-			return $link
-		} catch {
-			Shout "Error fetching release information. Check your network connection or repository." -color "Red"
-			return
-		}
 	}
 
 	function Install-oh {
@@ -136,25 +157,26 @@ function Main {
 		$releaseZipUrl = GitHubParce -username "PowerShell" -repo "PowerShell" -zip_name "-win-x64.msi"
 		$fileName = $releaseZipUrl.Split('/')[-1]
 
-		try {
-			Start-BitsTransfer -Source $releaseZipUrl -Destination "$savePath\$fileName" -ErrorAction Stop | Out-Null
-		} catch {
-			Invoke-WebRequest -Uri $releaseZipUrl -OutFile "$savePath\$fileName" -ErrorAction Stop | Out-Null
+		Download -releaseZipUrl $releaseZipUrl -savePath $savePath -fileName $fileName
+
+		Start-Process "$savePath\$fileName" -ArgumentList "/quiet /passive ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1" -Wait
+
+		$sourcePath = "$env:USERPROFILE\Documents\WindowsPowerShell\Modules"
+		$destinationPath = "$env:USERPROFILE\Documents\PowerShell\Modules"
+
+		if (-not (Test-Path $destinationPath)) {
+			New-Item -Path $destinationPath -ItemType Directory -Force | Out-Null
 		}
 
-		Start-Process "$savePath\$fileName" `
-					-ArgumentList "/quiet /passive ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1" -Wait
+		Copy-Item -Path "$sourcePath\PSReadLine" -Destination $destinationPath -Recurse
+		Copy-Item -Path "$sourcePath\Terminal-Icons" -Destination $destinationPath -Recurse
 	}
 
 	function Install-Clink {
 		$releaseZipUrl = GitHubParce -username "chrisant996" -repo "clink" -zip_name "clink.*.zip"
 		$fileName = $releaseZipUrl.Split('/')[-1]
 		
-		try {
-			Start-BitsTransfer -Source $releaseZipUrl -Destination "$savePath\$fileName" -ErrorAction Stop | Out-Null
-		} catch {
-			Invoke-WebRequest -Uri $releaseZipUrl -OutFile "$savePath\$fileName" -ErrorAction Stop | Out-Null
-		}
+		Download -releaseZipUrl $releaseZipUrl -savePath $savePath -fileName $fileName
 
 		$archivePath = "$savePath\$fileName"
 		$destinationPath = "$env:LocalAppData\clink"
@@ -180,11 +202,7 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 		$releaseZipUrl = GitHubParce -username "okibcn" -repo "nano-for-windows" -zip_name "nano-for-windows_win64*"
 		$fileName = $releaseZipUrl.Split('/')[-1]
 
-		try {
-			Start-BitsTransfer -Source $releaseZipUrl -Destination "$savePath\$fileName" -ErrorAction Stop | Out-Null
-		} catch {
-			Invoke-WebRequest -Uri $releaseZipUrl -OutFile "$savePath\$fileName" -ErrorAction Stop | Out-Null
-		}
+		Download -releaseZipUrl $releaseZipUrl -savePath $savePath -fileName $fileName
 
 		$archivePath = "$savePath\$fileName"
 		$destinationPath = "$env:LocalAppData\Nano"
@@ -203,11 +221,7 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 			$releaseZipUrl = GitHubParce -username "microsoft" -repo "terminal" -zip_name ".msixbundle"
 			$fileName = $releaseZipUrl.Split('/')[-1]
 		
-			try {
-				Start-BitsTransfer -Source $releaseZipUrl -Destination "$savePath\$fileName" -ErrorAction Stop | Out-Null
-			} catch {
-				Invoke-WebRequest -Uri $releaseZipUrl -OutFile "$savePath\$fileName" -ErrorAction Stop | Out-Null
-			}
+			Download -releaseZipUrl $releaseZipUrl -savePath $savePath -fileName $fileName
 		
 			try {
 				Add-AppxPackage -Path "$savePath\$fileName" | Out-Null
@@ -303,20 +317,16 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	Shout "Script is starting" -color 'Green'
 	Shout 'Installing NuGet packageProvider'; Install-PackageProvider -Name NuGet -Confirm:$False -Scope CurrentUser -Force | Out-Null
 	Shout 'Configuring PSGallery repository'; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted | Out-Null
-	Shout 'Installing psreadline powershell module'; Install-Module -Name psreadline -Scope CurrentUser -Force -ErrorAction SilentlyContinue | Out-Null
+	Shout 'Installing the latest PSReadline powershell module'; Install-Module -Name psreadline -Scope CurrentUser -Force -ErrorAction SilentlyContinue | Out-Null
+	if ($icons) { Shout 'Installing Terminal-Icons module'; Install-Module -Name Terminal-Icons -Confirm:$False -Scope CurrentUser -Repository PSGallery | Out-Null }
+	if ($ps7) { Shout 'Installing the latest powershell 7'; Install-Pwsh }
 	Shout 'Installing oh-my-posh'; Install-oh
-
 	if ($nano) { Shout 'Installing nano for console'; Install-Nano }
-	if ($cmd) { Shout 'Installing clink for cmd'; Install-Clink }
-	if ($ps7) { Shout 'Installing latest powershell 7'; Install-Pwsh }
+	if ($cmd) { Shout 'Installing clink for cmd (oh-my-cmd)'; Install-Clink }
 	if ($ps_profile) { Shout "Creating profiles for PS5/7"; Write-Profile -ps_ver '7' -oh_theme $oh_theme; Write-Profile -ps_ver '5' -oh_theme $oh_theme }
 	if ($terminal) { Shout 'Installing WindowsTerminal'; Install-WindowsTerminal }
 	Shout 'Configuring WindowsTerminal'; Configure-WindowsTerminal | out-null
 	Shout 'Installing oh-my-posh fonts'; oh-my-posh font install FiraCode | out-null
-
-	if ($icons) {
-		Shout 'Installing Terminal-Icons module'; Install-Module -Name Terminal-Icons -Confirm:$False -Scope CurrentUser -Repository PSGallery | Out-Null
-	}
 
 	Remove-Item "$savePath" -Force -Recurse
 	Shout '------------------------------------' -color 'Cyan'
@@ -341,15 +351,13 @@ if ($response) {
 # Initial settings
 $scriptPath = Split-Path -Path $MyInvocation.MyCommand.Definition
 
-$oh_theme = 'night-owl'
-
 $features = @{
-	cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for CMD (admin rights)'; argument = '-cmd' }
 	ps7        = [PSCustomObject]@{ status = '++'; description = 'Install the latest powershell 7 (admin rights)'; argument = '-ps7' }
+	cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for cmd (oh-my-cmd)'; argument = '-cmd' }
 	terminal   = [PSCustomObject]@{ status = '++'; description = 'Install WindowsTerminal'; argument = '-terminal' }
-	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Create powershell profiles (or do it manually later)'; argument = '-ps_profile' }
-	nano       = [PSCustomObject]@{ status = '++'; description = 'Install nano editor for Windows'; argument = '-nano' }
+	nano       = [PSCustomObject]@{ status = '++'; description = 'Install Nano editor for console'; argument = '-nano' }
 	icons      = [PSCustomObject]@{ status = '++'; description = 'Install Terminal-Icons module'; argument = '-icons' }
+	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Create powershell profiles (or do it manually later)'; argument = '-ps_profile' }
 }
 
 # Colorized
@@ -362,15 +370,14 @@ function Write-StatusLine {
     Write-Host $lineText -ForegroundColor $textColor
 }
 
-function MainRun {
-	$oh_theme = $oh_theme
+function ParametersPreparing {
     $cmd = $features.cmd.status -eq '++'
     $ps7 = $features.ps7.status -eq '++'
     $terminal = $features.terminal.status -eq '++'
     $ps_profile = $features.ps_profile.status -eq '++'
     $nano = $features.nano.status -eq '++'
 	$icons = $features.icons.status -eq '++'
-    Main -oh_theme $oh_theme -cmd:$cmd -ps7:$ps7 -terminal:$terminal -ps_profile:$ps_profile -nano:$nano -icons:$icons
+    MainRun -oh_theme $oh_theme -cmd:$cmd -ps7:$ps7 -terminal:$terminal -ps_profile:$ps_profile -nano:$nano -icons:$icons
 }
 
 # Main menu loop
@@ -379,7 +386,7 @@ do {
     Write-Host '------------------------------------------------'
     Write-Host "    Oh-my-posh OneClick installer" -ForegroundColor Yellow
     Write-Host "------------------------------------------------`n`n"
-    Write-Host " T or 0 - Set oh_theme (current: " -NoNewline
+    Write-Host " T or 0 - Set Oh-my-posh theme (current: " -NoNewline
     Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
     Write-Host ")"
     Write-Host "`n"
@@ -402,7 +409,7 @@ do {
         {($_ -eq 'T') -or ($_ -eq 0)} {
 			cls
 			Write-Host '---------------'
-			Write-Host " Set oh_theme (current: " -NoNewline
+			Write-Host " Set Oh-my-posh theme (current: " -NoNewline
 			Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
 			Write-Host ")"
 			Write-Host "---------------`n`n"
@@ -459,7 +466,7 @@ do {
             }
         }
         'R' {
-            MainRun
+            ParametersPreparing
         }
         'Q' {
             exit
