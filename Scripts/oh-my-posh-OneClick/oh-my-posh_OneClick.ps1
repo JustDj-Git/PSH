@@ -1,9 +1,42 @@
-if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-    $CommandLine = "-ExecutionPolicy Bypass -File `"" + $MyInvocation.MyCommand.Path + "`" "
-    Start-Process -FilePath powershell.exe -Verb Runas -ArgumentList $CommandLine
+#if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
+#    $CommandLine = "-ExecutionPolicy Bypass -File `"" + $MyInvocation.MyCommand.Path + "`" "
+#    Start-Process -FilePath powershell.exe -Verb Runas -ArgumentList $CommandLine
+#}
+
+$host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(105, 30)
+#$host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(105, 30)
+
+function Invoke-Admin {
+    param (
+        [string]$Command
+    )
+
+    if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
+        $CommandLine = "-NoProfile -ExecutionPolicy Bypass -Command `"& { $Command }`""
+        Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList $CommandLine -Waitq 
+    } else {
+        Invoke-Expression $Command
+    }
 }
 
-mode con: cols=105 lines=30
+function Extract-Zip {
+    param (
+        [string]$archivePath,
+        [string]$destinationPath
+    )
+
+    if (-not (Test-Path $destinationPath)) {
+        New-Item -Path $destinationPath -ItemType Directory -Force | Out-Null
+    }
+
+    $shellApp = New-Object -ComObject Shell.Application
+    $zipFile = $shellApp.NameSpace($archivePath)
+    $destinationFolder = $shellApp.NameSpace($destinationPath)
+
+    foreach ($item in $zipFile.Items()) {
+        $destinationFolder.CopyHere($item, 0x0004 + 0x0010 + 0x0400)
+    }
+}
 
 function Main {
 	param (
@@ -19,7 +52,9 @@ function Main {
 	[PARAMETER(Mandatory = $false)]
 	[switch]$ps_profile,
 	[PARAMETER(Mandatory = $false)]
-	[switch]$terminal
+	[switch]$terminal,
+	[PARAMETER(Mandatory = $false)]
+	[switch]$icons
 )
 
 	$savePath = "$env:TEMP\oh-my-posh_OneClick"
@@ -61,16 +96,15 @@ function Main {
 		)
 		
 		$latestReleaseUrl = "https://api.github.com/repos/$username/$repo/releases/latest"
-		if ($latestRelease -eq $null) {
+		try {
+			$latestRelease = Invoke-WebRequest -Uri $latestReleaseUrl | ConvertFrom-Json
+			$link = $latestRelease.assets.browser_download_url | Select-String -Pattern "$zip_name" | select-object -First 1
+			$link = $link.ToString().Trim()
+			return $link
+		} catch {
 			Shout "Error fetching release information. Check your network connection or repository." -color "Red"
 			return
 		}
-		
-		$latestRelease = Invoke-WebRequest -Uri $latestReleaseUrl | ConvertFrom-Json
-
-		$link = $latestRelease.assets.browser_download_url | Select-String -Pattern "$zip_name" | select-object -First 1
-		$link = $link.ToString().Trim()
-		return $link
 	}
 
 	function Install-oh {
@@ -113,7 +147,7 @@ function Main {
 	}
 
 	function Install-Clink {
-		$releaseZipUrl = GitHubParce -username "chrisant996" -repo "clink" -zip_name "clink.*.exe"
+		$releaseZipUrl = GitHubParce -username "chrisant996" -repo "clink" -zip_name "clink.*.zip"
 		$fileName = $releaseZipUrl.Split('/')[-1]
 		
 		try {
@@ -122,13 +156,19 @@ function Main {
 			Invoke-WebRequest -Uri $releaseZipUrl -OutFile "$savePath\$fileName" -ErrorAction Stop | Out-Null
 		}
 
-		Start-Process -FilePath "$savePath\$fileName" -ArgumentList '/S'
-		New-Item -Path "$env:LOCALAPPDATA\clink" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
-		$cfg_path = "$env:LOCALAPPDATA/Programs/oh-my-posh/themes".Replace("\", "/")
+		$archivePath = "$savePath\$fileName"
+		$destinationPath = "$env:LocalAppData\clink"
+
+		Extract-Zip -archivePath $archivePath -destinationPath $destinationPath
+
+		New-Item -Path "$env:LocalAppData\clink" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
+		$cfg_path = "$env:LocalAppData/Programs/oh-my-posh/themes".Replace("\", "/")
 		$scriptContent = @"
 load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --shell cmd'):read("*a"))()
 "@
-		$scriptContent | Out-File -FilePath "$env:LOCALAPPDATA\clink\oh-my-posh.lua" -Force -Encoding utf8
+		$scriptContent | Out-File -FilePath "$env:LocalAppData\clink\oh-my-posh.lua" -Force -Encoding utf8
+
+		Invoke-Expression "& '$env:LocalAppData\clink\clink.bat' autorun install" | Out-Null
 	}
 
 	function Install-Nano {
@@ -147,23 +187,13 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 		}
 
 		$archivePath = "$savePath\$fileName"
-		$destinationPath = "$env:ProgramFiles\Nano"
+		$destinationPath = "$env:LocalAppData\Nano"
 		
-		if (-not (Test-Path $destinationPath)) {
-			New-Item -Path $destinationPath -ItemType Directory -Force | Out-Null
-		}
+		Extract-Zip -archivePath $archivePath -destinationPath $destinationPath
 		
-		$shellApp = New-Object -ComObject Shell.Application
-		$zipFile = $shellApp.NameSpace($archivePath)
-		$destinationFolder = $shellApp.NameSpace($destinationPath)
-		
-		foreach ($item in $zipFile.Items()) {
-			$destinationFolder.CopyHere($item, 0x0004 + 0x0010 + 0x0400)
-		}
-		
-		$currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
-		$newPath = $currentPath + ";C:\Program Files\Nano"
-		[System.Environment]::SetEnvironmentVariable("Path", $newPath, [System.EnvironmentVariableTarget]::Machine)
+		$currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+		$newPath = $currentPath + ";$destinationPath"
+		[System.Environment]::SetEnvironmentVariable("Path", $newPath, [System.EnvironmentVariableTarget]::User)
 	}
 
 	function Install-WindowsTerminal {
@@ -194,10 +224,13 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 			Shout 'Some preparation for WindowsTerminal'
 			$wtExecutablePath = Join-Path -Path $($get_wt.InstallLocation) -ChildPath "wt.exe"
 			if (Test-Path $wtExecutablePath) {
-				Start-Process -FilePath $wtExecutablePath -WindowStyle Hidden
-				Start-Sleep -Seconds 2
-				Get-Process -Name WindowsTerminal | Stop-Process
-
+				if (Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue){
+					Shout 'Windows Terminal is currently running. Reopen it once the script has completed!' -Color 'Red'
+				} else {
+					Start-Process -FilePath $wtExecutablePath -WindowStyle Hidden
+					Start-Sleep -Seconds 2
+					Get-Process -Name WindowsTerminal | Stop-Process
+				}
 				if (Test-Path -Path "$($get_wt.InstallLocation)"){
 					$file_path =  "$env:localappdata\Packages\$($get_wt.PackageFamilyName)\LocalState\settings.json"
 					$jsonContent = Get-Content $file_path
@@ -268,11 +301,9 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	# =======================  Main Script Body =======================
 	cls
 	Shout "Script is starting" -color 'Green'
-
-	Shout 'Installing NuGet packageProvider'; Install-PackageProvider -Name NuGet -Confirm:$False -Force | Out-Null
+	Shout 'Installing NuGet packageProvider'; Install-PackageProvider -Name NuGet -Confirm:$False -Scope CurrentUser -Force | Out-Null
 	Shout 'Configuring PSGallery repository'; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted | Out-Null
-	Shout 'Installing psreadline powershell module'; Install-Module -Name psreadline -Force -ErrorAction SilentlyContinue | Out-Null
-	Shout 'Installing Terminal-Icons module'; Install-Module -Name Terminal-Icons -Confirm:$False | Out-Null
+	Shout 'Installing psreadline powershell module'; Install-Module -Name psreadline -Scope CurrentUser -Force -ErrorAction SilentlyContinue | Out-Null
 	Shout 'Installing oh-my-posh'; Install-oh
 
 	if ($nano) { Shout 'Installing nano for console'; Install-Nano }
@@ -282,6 +313,10 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	if ($terminal) { Shout 'Installing WindowsTerminal'; Install-WindowsTerminal }
 	Shout 'Configuring WindowsTerminal'; Configure-WindowsTerminal | out-null
 	Shout 'Installing oh-my-posh fonts'; oh-my-posh font install FiraCode | out-null
+
+	if ($icons) {
+		Shout 'Installing Terminal-Icons module'; Install-Module -Name Terminal-Icons -Confirm:$False -Scope CurrentUser -Repository PSGallery | Out-Null
+	}
 
 	Remove-Item "$savePath" -Force -Recurse
 	Shout '------------------------------------' -color 'Cyan'
@@ -309,11 +344,12 @@ $scriptPath = Split-Path -Path $MyInvocation.MyCommand.Definition
 $oh_theme = 'night-owl'
 
 $features = @{
-	cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for CMD (oh-my-cmd)'; argument = '-cmd' }
-	ps7        = [PSCustomObject]@{ status = '++'; description = 'Install the latest powershell 7'; argument = '-ps7' }
+	cmd        = [PSCustomObject]@{ status = '++'; description = 'Install Clink for CMD (admin rights)'; argument = '-cmd' }
+	ps7        = [PSCustomObject]@{ status = '++'; description = 'Install the latest powershell 7 (admin rights)'; argument = '-ps7' }
 	terminal   = [PSCustomObject]@{ status = '++'; description = 'Install WindowsTerminal'; argument = '-terminal' }
 	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Create powershell profiles (or do it manually later)'; argument = '-ps_profile' }
 	nano       = [PSCustomObject]@{ status = '++'; description = 'Install nano editor for Windows'; argument = '-nano' }
+	icons      = [PSCustomObject]@{ status = '++'; description = 'Install Terminal-Icons module'; argument = '-icons' }
 }
 
 # Colorized
@@ -333,7 +369,8 @@ function MainRun {
     $terminal = $features.terminal.status -eq '++'
     $ps_profile = $features.ps_profile.status -eq '++'
     $nano = $features.nano.status -eq '++'
-    Main -oh_theme $oh_theme -cmd:$cmd -ps7:$ps7 -terminal:$terminal -ps_profile:$ps_profile -nano:$nano
+	$icons = $features.icons.status -eq '++'
+    Main -oh_theme $oh_theme -cmd:$cmd -ps7:$ps7 -terminal:$terminal -ps_profile:$ps_profile -nano:$nano -icons:$icons
 }
 
 # Main menu loop
@@ -364,11 +401,11 @@ do {
     switch ($option) {
         {($_ -eq 'T') -or ($_ -eq 0)} {
 			cls
-			Write-Host '----'
+			Write-Host '---------------'
 			Write-Host " Set oh_theme (current: " -NoNewline
 			Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
 			Write-Host ")"
-			Write-Host '----'
+			Write-Host "---------------`n`n"
 			
 			$themes = @()
 			$response = Invoke-RestMethod -Uri "https://api.github.com/repos/JanDeDobbeleer/oh-my-posh/contents/themes"
@@ -397,7 +434,7 @@ do {
 			}
 			
 			Write-Host "`n`n------------"
-			Write-Host " B. Go back and set theme to $oh_theme"
+			Write-Host " B. Go back and set theme to $oh_theme" -ForegroundColor Green
 			Write-Host "------------`n`n"
 			
 			$choice = Read-Host " Select theme by number"
@@ -413,7 +450,7 @@ do {
                 Start-Sleep -Seconds 2
             }
         }
-        { $_ -in (1..5) } {
+        { $_ -in (1..6) } {
             $feature = $features.Keys | Select-Object -Index ($option - 1)
             if ($features[$feature].status -eq '++') {
                 $features[$feature].status = '--'
