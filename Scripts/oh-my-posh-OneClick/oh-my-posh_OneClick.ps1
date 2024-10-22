@@ -1,28 +1,11 @@
-#if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-#    $CommandLine = "-ExecutionPolicy Bypass -File `"" + $MyInvocation.MyCommand.Path + "`" "
-#    Start-Process -FilePath powershell.exe -Verb Runas -ArgumentList $CommandLine
-#}
-
 $host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(105, 30)
-#$host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(105, 30)
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 $oh_theme = 'night-owl'
 $logging = $false
 
 ######### Helpers
-
-function Invoke-Admin {
-    param (
-        [string]$Command
-    )
-
-    if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-        $CommandLine = "-NoProfile -ExecutionPolicy Bypass -Command `"& { $Command }`""
-        Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList $CommandLine -Waitq 
-    } else {
-        Invoke-Expression $Command
-    }
-}
 
 function Extract-Zip {
     param (
