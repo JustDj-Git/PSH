@@ -67,7 +67,6 @@ function GitHubParce {
 		[PARAMETER(Mandatory = $true)]
 		[ValidateNotNullOrEmpty()]
 		$zip_name
-
 	)
 	
 	$latestReleaseUrl = "https://api.github.com/repos/$username/$repo/releases/latest"
@@ -272,9 +271,13 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 			}
 		}
 
+		if ($icons){
+			$row = 'Import-Module Terminal-Icons'
+		}
+
 		$scriptContent = @"
 `$oh_my_theme="$oh_theme"
-
+$row
 oh-my-posh init $ps_com --config "$env:LOCALAPPDATA\Programs\oh-my-posh\themes\`$oh_my_theme.omp.json" | Invoke-Expression
 # Shows navigable menu of all options when hitting Tab
 Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete
@@ -290,6 +293,30 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 		$scriptContent | Out-File -FilePath "$profile_path" -Append -Force -Encoding utf8
 	}
 
+	function Reg {
+		$shell = New-Object -ComObject WScript.Shell
+		$userProgramsFolder = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+	
+		if (((Get-Culture).DisplayName -like "English*") -and ($cmd)) {
+			Remove-Item -Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\System Tools\Command Prompt.lnk" -Force -ErrorAction SilentlyContinue
+			$cmdShortcutPath = Join-Path -Path "$userProgramsFolder\System Tools" -ChildPath "Command Prompt.lnk"
+			$cmdShortcut = $shell.CreateShortcut($cmdShortcutPath)
+			$cmdShortcut.TargetPath = "$env:SystemRoot\System32\cmd.exe"
+			$cmdShortcut.IconLocation = "$env:SystemRoot\System32\cmd.exe"
+			$cmdShortcut.WorkingDirectory = '%HOMEDRIVE%%HOMEPATH%'
+			$cmdShortcut.Save()
+		}
+	
+		Remove-Item -Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Windows PowerShell\Windows PowerShell.lnk" -Force -ErrorAction SilentlyContinue
+	
+		$psShortcutPath = Join-Path -Path "$userProgramsFolder\Windows PowerShell" -ChildPath "Windows PowerShell.lnk"
+		$psShortcut = $shell.CreateShortcut($psShortcutPath)
+		$psShortcut.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+		$psShortcut.IconLocation = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+		$psShortcut.WorkingDirectory = '%HOMEDRIVE%%HOMEPATH%'
+		$psShortcut.Save()
+	}
+
 	# =======================  Main Script Body =======================
 	cls
 	Shout "Script is starting" -color 'Green'
@@ -297,16 +324,16 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	Shout 'Configuring PSGallery repository'; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted | Out-Null
 	Shout 'Installing the latest PSReadline powershell module'; Install-Module -Name psreadline -Scope CurrentUser -Force -ErrorAction SilentlyContinue | Out-Null
 	if ($icons) { Shout 'Installing Terminal-Icons module'; Install-Module -Name Terminal-Icons -Confirm:$False -Scope CurrentUser -Repository PSGallery | Out-Null }
+	Set-ItemProperty -Path "HKCU:\Console" -Name "FaceName" -Value "FiraCode Nerd Font Mono" -ErrorAction SilentlyContinue | Out-Null
 	if ($ps7) { Shout 'Installing the latest powershell 7'; Install-Pwsh }
 	Shout 'Installing oh-my-posh'; Install-oh
 	if ($nano) { Shout 'Installing nano for console'; Install-Nano }
 	if ($cmd) { Shout 'Installing clink for cmd (oh-my-cmd)'; Install-Clink }
-	if ($ps_profile) { Shout "Creating profiles for PS5/7"; Write-Profile -ps_ver '7' -oh_theme $oh_theme; Write-Profile -ps_ver '5' -oh_theme $oh_theme }
+	if ($ps_profile) { Shout "Creating profiles for PS5/7"; Write-Profile -ps_ver '7' -oh_theme $oh_theme; Write-Profile -ps_ver '5' -oh_theme $oh_theme}
 	Shout 'Installing oh-my-posh fonts'; oh-my-posh font install FiraCode | out-null
 	if ($terminal) { Shout 'Installing WindowsTerminal'; Install-WindowsTerminal }
-	Shout 'Configuring WindowsTerminal'; Configure-WindowsTerminal | out-null
-
-	Remove-Item "$savePath" -Force -Recurse
+	Shout 'Configuring WindowsTerminal'; Configure-WindowsTerminal
+	Reg
 	Shout '------------------------------------' -color 'Cyan'
 	Shout '   The script is completed! Enjoy!  ' -color 'Blue'
 	Shout '------------------------------------' -color 'Cyan'
@@ -370,26 +397,25 @@ function ParametersPreparing {
 # Main menu loop
 do {
     cls
-    Write-Host '------------------------------------------------'
-    Write-Host "    Oh-my-posh OneClick installer" -ForegroundColor Yellow
-    Write-Host "------------------------------------------------`n`n"
-    Write-Host " T or 0 - Set Oh-my-posh theme (current: " -NoNewline
+    Write-Host '---------------------------------------'
+    Write-Host '    Oh-my-posh OneClick installer' -ForegroundColor Yellow
+    Write-Host '---------------------------------------'
+    Write-Host ' T or 0 - Set Oh-my-posh theme (current: ' -NoNewline
     Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
-    Write-Host ")"
-    Write-Host "`n"
+    Write-Host ")`n"
     $count = 1
 	foreach ($featureKey in $orderedFeatures) {
 		$feature = $features[$featureKey]
 		Write-StatusLine -status $feature.status -lineText " $count. $($feature.status) $($feature.description)"
 		$count++
 	}
-    Write-Host "`n`n--------------------------------------"
+    Write-Host "`n--------------------------------------"
     Write-Host " R. Run installation Script" -ForegroundColor Blue
     Write-Host " Q. Do nothing and exit" -ForegroundColor Red
-    Write-Host "--------------------------------------`n`n"
+    Write-Host "--------------------------------------"
     Write-Host ' Notes:'
-    Write-Host '  By default, all functions are enabled unless manually disabled.'
-    Write-Host "  Choose option with numbers plus enter to disable/enable function `n`n"
+    Write-Host '  By default, all functions are enabled unless manually disabled'
+    Write-Host "  Choose option with numbers plus Enter to disable/enable function `n"
 
     $option = Read-Host " Enter your choice"
 
@@ -400,7 +426,7 @@ do {
 			Write-Host " Set Oh-my-posh theme (current: " -NoNewline
 			Write-Host "$oh_theme" -ForegroundColor Cyan -NoNewline
 			Write-Host ")"
-			Write-Host "---------------`n`n"
+			Write-Host "---------------"
 			
 			$themes = @()
 			$response = Invoke-RestMethod -Uri "https://api.github.com/repos/JanDeDobbeleer/oh-my-posh/contents/themes"
