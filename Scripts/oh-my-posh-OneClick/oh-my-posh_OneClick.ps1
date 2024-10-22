@@ -1,5 +1,3 @@
-$host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(105, 30)
-
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $oh_theme = 'night-owl'
@@ -116,15 +114,13 @@ function MainRun {
 			Shout 'oh-my-posh is already installed. Skipping...'
 			return
 		}
+		$releaseZipUrl = GitHubParce -username "JanDeDobbeleer" -repo "oh-my-posh" -zip_name "install-amd64.exe"
+		$fileName = $releaseZipUrl.Split('/')[-1]
 
-		try {
-			Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://ohmyposh.dev/install.ps1')) 6>$null
-		} catch {
-			Shout "Error installing oh-my-posh. Rerun the script!" -color "Red"
-			pause
-			return
-		}
+		Download -releaseZipUrl $releaseZipUrl -savePath $savePath -fileName $fileName
 		
+		Start-Process "$savePath\$fileName" -ArgumentList "/CURRENTUSER /VERYSILENT" -Wait
+	
 		$machinePath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::Machine)
 		$userPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
 		$env:Path = $machinePath + ";" + $userPath
@@ -279,7 +275,6 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 		$scriptContent = @"
 `$oh_my_theme="$oh_theme"
 
-Import-Module Terminal-Icons
 oh-my-posh init $ps_com --config "$env:LOCALAPPDATA\Programs\oh-my-posh\themes\`$oh_my_theme.omp.json" | Invoke-Expression
 # Shows navigable menu of all options when hitting Tab
 Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete
