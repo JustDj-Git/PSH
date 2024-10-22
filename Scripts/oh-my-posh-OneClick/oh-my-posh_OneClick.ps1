@@ -307,9 +307,9 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	if ($nano) { Shout 'Installing nano for console'; Install-Nano }
 	if ($cmd) { Shout 'Installing clink for cmd (oh-my-cmd)'; Install-Clink }
 	if ($ps_profile) { Shout "Creating profiles for PS5/7"; Write-Profile -ps_ver '7' -oh_theme $oh_theme; Write-Profile -ps_ver '5' -oh_theme $oh_theme }
+	Shout 'Installing oh-my-posh fonts'; oh-my-posh font install FiraCode | out-null
 	if ($terminal) { Shout 'Installing WindowsTerminal'; Install-WindowsTerminal }
 	Shout 'Configuring WindowsTerminal'; Configure-WindowsTerminal | out-null
-	Shout 'Installing oh-my-posh fonts'; oh-my-posh font install FiraCode | out-null
 
 	Remove-Item "$savePath" -Force -Recurse
 	Shout '------------------------------------' -color 'Cyan'
@@ -343,6 +343,15 @@ $features = @{
 	ps_profile = [PSCustomObject]@{ status = '++'; description = 'Create powershell profiles (or do it manually later)'; argument = '-ps_profile' }
 }
 
+$orderedFeatures = @(
+    'ps7',
+    'cmd',
+    'terminal',
+    'nano',
+    'icons',
+    'ps_profile'
+)
+
 # Colorized
 function Write-StatusLine {
     param (
@@ -374,10 +383,11 @@ do {
     Write-Host ")"
     Write-Host "`n"
     $count = 1
-    $features.GetEnumerator() | ForEach-Object {
-        Write-StatusLine -status $_.Value.status -lineText " $count. $($_.Value.status) $($_.Value.description)"
+	foreach ($featureKey in $orderedFeatures) {
+		$feature = $features[$featureKey]
+		Write-StatusLine -status $feature.status -lineText " $count. $($feature.status) $($feature.description)"
 		$count++
-    }
+	}
     Write-Host "`n`n--------------------------------------"
     Write-Host " R. Run installation Script" -ForegroundColor Blue
     Write-Host " Q. Do nothing and exit" -ForegroundColor Red
@@ -441,12 +451,12 @@ do {
             }
         }
         { $_ -in (1..6) } {
-            $feature = $features.Keys | Select-Object -Index ($option - 1)
-            if ($features[$feature].status -eq '++') {
-                $features[$feature].status = '--'
-            } else {
-                $features[$feature].status = '++'
-            }
+			$featureKey = $orderedFeatures[$option - 1]
+			if ($features[$featureKey].status -eq '++') {
+				$features[$featureKey].status = '--'
+			} else {
+				$features[$featureKey].status = '++'
+			}
         }
         'R' {
             ParametersPreparing
