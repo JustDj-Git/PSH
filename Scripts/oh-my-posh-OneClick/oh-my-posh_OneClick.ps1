@@ -2,7 +2,7 @@
 
 $oh_theme = 'night-owl'
 $logging = $false
-
+$progressPreference = 'SilentlyContinue'
 ######### Helpers
 
 function Extract-Zip {
@@ -30,6 +30,11 @@ function Download {
         [string]$savePath,
 		[string]$fileName
     )
+
+	if (-not (Test-Path $savePath)) {
+		New-Item -ItemType Directory -Path $savePath -Force
+	}
+
 	try {
 		(New-Object Net.WebClient).DownloadFile("$releaseZipUrl", "$savePath\$fileName")
 	} catch {
@@ -44,7 +49,7 @@ function Shout {
 		$color
 	)
 
-	$date = (Get-Date -Format "MM/dd/yyyy HH:mm:ss").ToString()
+	$date = (Get-Date -Format "MM/dd/yy HH:mm:ss").ToString()
 	$finaltext = $date + ' ' + $text
 	if ($logging) {
 		Write-Host $finaltext >> "$PSScriptRoot/oh-my-posh_OneClick.log"
@@ -70,6 +75,7 @@ function GitHubParce {
 	)
 	
 	$latestReleaseUrl = "https://api.github.com/repos/$username/$repo/releases/latest"
+
 	try {
 		$latestRelease = Invoke-WebRequest -Uri $latestReleaseUrl | ConvertFrom-Json
 		$link = $latestRelease.assets.browser_download_url | Select-String -Pattern "$zip_name" | select-object -First 1
@@ -118,7 +124,7 @@ function MainRun {
 
 		Download -releaseZipUrl $releaseZipUrl -savePath $savePath -fileName $fileName
 		
-		Start-Process "$savePath\$fileName" -ArgumentList "/CURRENTUSER /VERYSILENT" -Wait
+		Start-Process "$savePath\$fileName" -ArgumentList "/CURRENTUSER /VERYSILENT" -Wait | out-null
 	
 		$machinePath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::Machine)
 		$userPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
@@ -161,14 +167,13 @@ function MainRun {
 
 		Extract-Zip -archivePath $archivePath -destinationPath $destinationPath
 
-		New-Item -Path "$env:LocalAppData\clink" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
-		$cfg_path = "$env:LocalAppData/Programs/oh-my-posh/themes".Replace("\", "/")
+		$cfg_path = "$env:LocalAppData/Programs/oh-my-posh/themes".Replace('\', '/')
 		$scriptContent = @"
 load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --shell cmd'):read("*a"))()
 "@
-		$scriptContent | Out-File -FilePath "$env:LocalAppData\clink\oh-my-posh.lua" -Force -Encoding utf8
+		$scriptContent | Out-File -FilePath "$destinationPath\oh-my-posh.lua" -Force -Encoding utf8
 
-		Invoke-Expression "& '$env:LocalAppData\clink\clink.bat' autorun install" | Out-Null
+		Invoke-Expression "& '$destinationPath\clink.bat' autorun install" | Out-Null
 	}
 
 	function Install-Nano {
@@ -266,7 +271,7 @@ load(io.popen('oh-my-posh.exe --config="$cfg_path/$oh_theme.omp.json" --init --s
 		if (Test-Path $profile_path) {
 			$profile_content = Get-Content -Path $profile_path -Raw
 			if ($profile_content -match "oh-my-posh") {
-				Write-Host "Profile $profile_path already contains 'oh-my-posh'. No changes made."
+				Shout "Profile $profile_path already contains 'oh-my-posh'. No changes made."
 				return
 			}
 		}
@@ -320,10 +325,11 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 	# =======================  Main Script Body =======================
 	cls
 	Shout "Script is starting" -color 'Green'
-	Shout 'Installing NuGet packageProvider'; Install-PackageProvider -Name NuGet -Confirm:$False -Scope CurrentUser -Force | Out-Null
-	Shout 'Configuring PSGallery repository'; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted | Out-Null
-	Shout 'Installing the latest PSReadline powershell module'; Install-Module -Name psreadline -Scope CurrentUser -Force -ErrorAction SilentlyContinue | Out-Null
-	if ($icons) { Shout 'Installing Terminal-Icons module'; Install-Module -Name Terminal-Icons -Confirm:$False -Scope CurrentUser -Repository PSGallery | Out-Null }
+	Shout 'Installing NuGet packageProvider'; $job = Start-Job -ScriptBlock { Install-PackageProvider -Name NuGet -Confirm:$False -Scope CurrentUser -Force | Out-Null }; Wait-Job -Job $job | Out-Null; Remove-Job -Job $job
+	Shout 'Configuring PSGallery repository'; $job = Start-Job -ScriptBlock { Set-PSRepository -Name PSGallery -InstallationPolicy Trusted | Out-Null }; Wait-Job -Job $job | Out-Null; Remove-Job -Job $job
+	Shout 'Installing the latest PSReadline powershell module'; $job = Start-Job -ScriptBlock { Install-Module -Name psreadline -Scope CurrentUser -Force -ErrorAction SilentlyContinue | Out-Null }; Wait-Job -Job $job | Out-Null; Remove-Job -Job $job
+	if ($icons) { Shout 'Installing Terminal-Icons module'; $job = Start-Job -ScriptBlock { Install-Module -Name Terminal-Icons -Confirm:$False -Scope CurrentUser -Repository PSGallery | Out-Null }; Wait-Job -Job $job | Out-Null; Remove-Job -Job $job }
+
 	Set-ItemProperty -Path "HKCU:\Console" -Name "FaceName" -Value "FiraCode Nerd Font Mono" -ErrorAction SilentlyContinue | Out-Null
 	if ($ps7) { Shout 'Installing the latest powershell 7'; Install-Pwsh }
 	Shout 'Installing oh-my-posh'; Install-oh
